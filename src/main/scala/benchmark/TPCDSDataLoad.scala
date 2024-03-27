@@ -113,10 +113,39 @@ class TPCDSDataLoad(conf: TPCDSDataLoadConf) extends Benchmark(conf) {
           else s"OPTIONS ( type = '$hudiTableType', primaryKey = " + tablePrimaryKeys(tableName).mkString("'", ",", "')")
       }
       runQuery(s"DROP TABLE IF EXISTS $fullTableName", s"drop-table-$tableName")
+      var tableProps = ""
+      import scala.io.Source
+      var filePath = "/home/kirp/lhbench/iceberg.txt"
+      try{
+        val source = Source.fromFile(filePath)
+        val lines = source.getLines()
+        val properties = lines
+          .filter(_.trim.nonEmpty) // 过滤空行
+          .map { line =>
+            val parts = line.split("\\s+").map(_.trim)
+            if (parts.length == 2) {
+              s"'${parts(0)}'='${parts(1)}'"
+            } else {
+              // 处理不符合预期的行
+              println(s"Warning: Skipping invalid line: $line")
+              ""
+            }
+          }
+          .filter(_.nonEmpty) // 移除空字符串（例如，处理无效行后留下的）
+          .mkString(", ")
+
+        source.close() // 关闭文件
+
+        tableProps = s"TBLPROPERTIES ($properties)"
+
+      } catch {
+        case e: Exception => println("Error reading file: " + e.getMessage)
+      }
 
       runQuery(s"""CREATE TABLE $fullTableName
                    USING ${conf.formatName}
                    $partitionedBy $tableOptions
+                   $tableProps
                    LOCATION '$targetLocation'
                    SELECT * FROM `${sourceFormat}`.`$sourceTableLocation` $excludeNulls
                 """, s"create-table-$tableName", ignoreError = true)

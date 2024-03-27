@@ -137,7 +137,7 @@ class IncrementalTPCDSBenchmark(conf: IncrementalTPCDSBenchmarkConf) extends Ben
     runQuery(s"USE ${dbName}", "prep:use-database")
     runQuery("SHOW TABLES", printRows = true, queryName = s"prep:setup-show-tables")
 
-//     create all tables
+    // create all tables
     baseTablePaths
       .filter { case (table, _) => filteredTablesBase.contains(table) }
       .foreach { case (table, basePath) => createTable(table, basePath) }
@@ -151,40 +151,39 @@ class IncrementalTPCDSBenchmark(conf: IncrementalTPCDSBenchmarkConf) extends Ben
     printTableStats(filteredTablesBase)
 
     // run queries
-//    runTPCDSQueries(1, Some(filteredQueries))
-//    if (conf.formatName == "hudi" && tableType == "mor") {
-//      runTPCDSQueries(1, Some(filteredQueries), Some("_rt"))
-//      runTPCDSQueries(1, Some(filteredQueries), Some("_ro"))
-//    }
+    runTPCDSQueries(1, Some(filteredQueries))
+    if (conf.formatName == "hudi" && tableType == "mor") {
+      runTPCDSQueries(1, Some(filteredQueries), Some("_rt"))
+      runTPCDSQueries(1, Some(filteredQueries), Some("_ro"))
+    }
 
     // run refreshes
-//    for (i <- 1 to conf.refreshCount) {
-//      refreshTablePaths(i - 1)
-//        .filter { case (table, _) => filteredTablesMerge.contains(table) }
-//        .foreach { case (table, basePath) => createRefreshTable(i, table, basePath) }
-////        .foreach { case (table, basePath) => runMergeIteration(i, table, basePath) }
-//    }
-//    printTableStats(filteredTablesMerge)
+    for (i <- 1 to conf.refreshCount) {
+      refreshTablePaths(i - 1)
+        .filter { case (table, _) => filteredTablesMerge.contains(table) }
+        .foreach { case (table, basePath) => runMergeIteration(i, table, basePath) }
+    }
+    printTableStats(filteredTablesMerge)
 
     // run query before compaction
-//    runTPCDSQueries(2, Some(filteredQueries))
-//    if (conf.formatName == "hudi" && tableType == "mor") {
-//      runTPCDSQueries(2, Some(filteredQueries), Some("_rt"))
-//      runTPCDSQueries(2, Some(filteredQueries), Some("_ro"))
-//    }
+    runTPCDSQueries(2, Some(filteredQueries))
+    if (conf.formatName == "hudi" && tableType == "mor") {
+      runTPCDSQueries(2, Some(filteredQueries), Some("_rt"))
+      runTPCDSQueries(2, Some(filteredQueries), Some("_ro"))
+    }
 
-//    compact("merge", filteredTablesMerge)
-//    printTableStats(filteredTablesMerge)
+    compact("merge", filteredTablesMerge)
+    printTableStats(filteredTablesMerge)
 
     // // run query after compaction
-//     runTPCDSQueries(3, Some(filteredQueries))
-//     if (conf.formatName == "hudi" && tableType == "mor") {
-//       runTPCDSQueries(3, Some(filteredQueries), Some("_rt"))
-//       runTPCDSQueries(3, Some(filteredQueries), Some("_ro"))
-//     }
+    // runTPCDSQueries(3, Some(filteredQueries))
+    // if (conf.formatName == "hudi" && tableType == "mor") {
+    //   runTPCDSQueries(3, Some(filteredQueries), Some("_rt"))
+    //   runTPCDSQueries(3, Some(filteredQueries), Some("_ro"))
+    // }
   }
 
-  protected def  compact(message: String, tables: Seq[String]): Unit = {
+  protected def compact(message: String, tables: Seq[String]): Unit = {
     if (conf.formatName == "delta" || conf.formatName == "iceberg") {
       tables
         .filter(table => tables.contains(table))
@@ -208,7 +207,7 @@ class IncrementalTPCDSBenchmark(conf: IncrementalTPCDSBenchmarkConf) extends Ben
     tables
       .foreach(tableName => {
         if (conf.formatName == "iceberg") {
-          runQuery(s"SELECT * FROM ${dbCatalog}.${dbName}.$tableName.snapshots",
+          runQuery(s"SELECT * FROM ice.${dbName}.$tableName.snapshots",
             printRows = true, queryName = s"prep:file-stats-$tableName")
         } else if (conf.formatName == "delta") {
           runQuery(s"DESCRIBE history delta.`${dbLocation}/$tableName`",
@@ -221,8 +220,9 @@ class IncrementalTPCDSBenchmark(conf: IncrementalTPCDSBenchmarkConf) extends Ben
 
   protected def createTable(tableName: String, parquet_path: String): Unit = {
     val targetLocation = osPathJoin(dbLocation, tableName)
-    runQuery(s"DROP TABLE IF EXISTS $dbName.`$tableName`", s"createtable:drop-table-$tableName")
 
+    // create schema
+    runQuery(s"DROP TABLE IF EXISTS $dbName.`$tableName`", s"createtable:drop-table-$tableName")
     val partitionedByCreate =
       if (!partitionTables || tablePartitionKeys(tableName).head.isEmpty) ""
       else "PARTITIONED BY " + tablePartitionKeys(tableName).mkString("(", ", ", ")")
@@ -232,42 +232,9 @@ class IncrementalTPCDSBenchmark(conf: IncrementalTPCDSBenchmarkConf) extends Ben
     } else {
       ""
     }
-    var tablePropsCreate = if (conf.formatName == "iceberg" && tableType == "mor") {
+    val tablePropsCreate = if (conf.formatName == "iceberg" && tableType == "mor") {
       s"TBLPROPERTIES ( 'write.merge.mode' = 'merge-on-read',  'format-version'='2')"
     } else ""
-
-    import scala.io.Source
-    val filePath = "/meida/psf/Umich/test/iceberg.txt"
-    try {
-      // 读取文件
-      val source = Source.fromFile(filePath)
-      val lines = source.getLines()
-
-      // 解析文件并构建属性字符串
-      val properties = lines
-        .filter(_.trim.nonEmpty) // 过滤空行
-        .map { line =>
-          val parts = line.split("\\s+").map(_.trim)
-          if (parts.length == 2) {
-            s"'${parts(0)}'='${parts(1)}'"
-          } else {
-            // 处理不符合预期的行
-            println(s"Warning: Skipping invalid line: $line")
-            ""
-          }
-        }
-        .filter(_.nonEmpty) // 移除空字符串（例如，处理无效行后留下的）
-        .mkString(", ")
-
-      source.close() // 关闭文件
-
-      tablePropsCreate = s"TBLPROPERTIES ($properties)"
-
-    } catch {
-      case e: Exception => println("Error reading file: " + e.getMessage)
-    }
-
-
     val excludeNulls =
       if (!partitionTables || tablePartitionKeys(tableName).head.isEmpty) ""
       else "WHERE " + tablePartitionKeys(tableName).head + " IS NOT NULL"
@@ -280,9 +247,6 @@ class IncrementalTPCDSBenchmark(conf: IncrementalTPCDSBenchmarkConf) extends Ben
         ""
       }
     }
-
-
-
     runQuery(
       s"""CREATE TABLE $dbName.`$tableName`
           USING ${conf.formatName}
@@ -291,79 +255,6 @@ class IncrementalTPCDSBenchmark(conf: IncrementalTPCDSBenchmarkConf) extends Ben
           SELECT * FROM parquet.`$parquet_path` $excludeNulls $sortIceberg""".stripMargin,
       s"create:$tableName", ignoreError = false)
   }
-
-  protected def createRefreshTable(i:Int, tableName: String, parquet_path: String): Unit = {
-    val targetLocation = osPathJoin(dbLocation, tableName)
-    runQuery(s"DROP TABLE IF EXISTS $dbName.`${tableName}_refresh_$i`", s"createtable:drop-table-$tableName")
-
-    val partitionedByCreate =
-      if (!partitionTables || tablePartitionKeys(tableName).head.isEmpty) ""
-      else "PARTITIONED BY " + tablePartitionKeys(tableName).mkString("(", ", ", ")")
-    val tableOptionsCreate = if (conf.formatName == "hudi") {
-      if (!primaryKeys || tablePrimaryKeys(tableName).head.isEmpty) s"OPTIONS ( type = '$tableType')"
-      else s"OPTIONS (type = '$tableType', primaryKey = " + tablePrimaryKeys(tableName).mkString("'", ",", "')")
-    } else {
-      ""
-    }
-    var tablePropsCreate = if (conf.formatName == "iceberg" && tableType == "mor") {
-      s"TBLPROPERTIES ( 'write.merge.mode' = 'merge-on-read',  'format-version'='2')"
-    } else ""
-
-    import scala.io.Source
-    val filePath = "/meida/psf/Umich/test/iceberg.txt"
-    try {
-      // 读取文件
-      val source = Source.fromFile(filePath)
-      val lines = source.getLines()
-
-      // 解析文件并构建属性字符串
-      val properties = lines
-        .filter(_.trim.nonEmpty) // 过滤空行
-        .map { line =>
-          val parts = line.split("\\s+").map(_.trim)
-          if (parts.length == 2) {
-            s"'${parts(0)}'='${parts(1)}'"
-          } else {
-            // 处理不符合预期的行
-            println(s"Warning: Skipping invalid line: $line")
-            ""
-          }
-        }
-        .filter(_.nonEmpty) // 移除空字符串（例如，处理无效行后留下的）
-        .mkString(", ")
-
-      source.close() // 关闭文件
-
-      tablePropsCreate = s"TBLPROPERTIES ($properties)"
-
-    } catch {
-      case e: Exception => println("Error reading file: " + e.getMessage)
-    }
-
-
-    val excludeNulls =
-      if (!partitionTables || tablePartitionKeys(tableName).head.isEmpty) ""
-      else "WHERE " + tablePartitionKeys(tableName).head + " IS NOT NULL"
-    // if partitioned and conf.formatName == "iceberg", then we must sort the view by partition keys
-    // https://iceberg.apache.org/docs/latest/spark-writes/#writing-to-partitioned-tables
-    val sortIceberg = {
-      if (partitionTables && tablePartitionKeys(tableName).head.nonEmpty) {
-        s"ORDER BY ${tablePartitionKeys(tableName).mkString(", ")}"
-      } else {
-        ""
-      }
-    }
-
-
-    runQuery(
-      s"""CREATE TABLE $dbName.`${tableName}_refresh_$i`
-          USING ${conf.formatName}
-          $partitionedByCreate $tableOptionsCreate $tablePropsCreate
-          LOCATION '$targetLocation'
-          SELECT * FROM parquet.`$parquet_path` $excludeNulls $sortIceberg""".stripMargin,
-      s"create:$tableName", ignoreError = false)
-  }
-  //AS SELECT * FROM parquet.`$refreshPath` $excludeNulls $sortIceberg""".stripMargin
 
   protected def runMergeIteration(i: Int, table: String, refreshPath: String): DataFrame = {
     val excludeNulls = if (!partitionTables || tablePartitionKeys(table).head.isEmpty) "" else "WHERE " + tablePartitionKeys(table).head + " IS NOT NULL"
@@ -388,7 +279,7 @@ class IncrementalTPCDSBenchmark(conf: IncrementalTPCDSBenchmarkConf) extends Ben
           WHEN MATCHED THEN UPDATE SET *
           WHEN NOT MATCHED THEN INSERT *""".stripMargin
     runQuery(merge_query, s"merge:$i:${table}", ignoreError = false)
-//    runQuery(s"DROP VIEW IF EXISTS $tempViewName", s"drop:$tempViewName")
+    runQuery(s"DROP VIEW IF EXISTS $tempViewName", s"drop:$tempViewName")
   }
 
   protected def runTPCDSQueries(query_iteration: Int, filteredQueries: Option[Seq[String]] = None, hudi_table_postfix: Option[String] = None): Unit = {
@@ -465,7 +356,6 @@ class IncrementalTPCDSBenchmark(conf: IncrementalTPCDSBenchmarkConf) extends Ben
     log("Parsing and caching base data as parquet files")
     val baseTablePaths = tables.map { table =>
       val basePath = osPathJoin(conf.cachedPath.get, s"${conf.scaleInGB}gb", table, "base") + "/"
-      //next time
       if (!parquetPathExists(basePath)) {
         log(s"\tTable $table is not cached at $basePath, caching now")
         val df = loadTable(Left(table), "base")
@@ -501,7 +391,7 @@ class IncrementalTPCDSBenchmark(conf: IncrementalTPCDSBenchmarkConf) extends Ben
       val pathStatus = paths.map { case (table, path) => table -> parquetPathExists(path) }
       if (!pathStatus.forall(_._2)) {
         refreshSchema
-          .map { table => table.name -> loadTable(Right(table), s"refresh$i", file_suffix = s"_$i")}
+          .map { table => table.name -> loadTable(Right(table), s"refresh$i", file_suffix = s"_$i") }
           .foreach { case (table, df) => df.createOrReplaceTempView(table) }
         baseTablePaths
           .foreach { case (table, basePath) =>
@@ -530,7 +420,6 @@ class IncrementalTPCDSBenchmark(conf: IncrementalTPCDSBenchmarkConf) extends Ben
   }
 
   protected def loadTable(tableSchema: Either[String, Table], revision: String = "base", file_prefix: String = "", file_suffix: String = ""): DataFrame = {
-
     val tableName = tableSchema match {
       case Left(name) => name
       case Right(t) => t.name
@@ -538,7 +427,6 @@ class IncrementalTPCDSBenchmark(conf: IncrementalTPCDSBenchmarkConf) extends Ben
     val banner = s"parse-dsdgen-${tableName}-$revision"
     spark.sparkContext.setJobGroup(banner, banner, interruptOnCancel = true)
     val table_path = osPathJoin(conf.sourcePath.get, revision, s"${file_prefix}${tableName}${file_suffix}.dat")
-    log(s"=============================================\n${table_path}===============================\n")
     val reader = spark.read.format("csv")
       .option("header", "false")
       .option("delimiter", "|")

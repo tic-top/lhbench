@@ -260,7 +260,8 @@ class IcebergBenchmarkSpec(BenchmarkSpec):
           "spark.sql.catalog.ice=org.apache.iceberg.spark.SparkCatalog",
           "spark.sql.catalog.spark_catalog=org.apache.iceberg.spark.SparkSessionCatalog",
           "spark.sql.catalog.spark_catalog.type=hive",
-          "spark.sql.catalog.ice.io-impl=org.apache.iceberg.aws.s3.S3FileIO"
+        #   "spark.sql.catalog.ice.io-impl=org.apache.iceberg.aws.s3.S3FileIO",
+          "spark.sql.catalog.ice.io-impl=org.apache.iceberg.hadoop.HadoopFileIO"
         ]
         assert(spark_version is not None)
         spark_major_minor = VersionTuple(spark_version).major_minor_str()
